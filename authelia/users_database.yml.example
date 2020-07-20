@@ -1,0 +1,17 @@
+###############################################################
+##                         Users Database                      #
+################################################################
+
+# This file can be used if you do not have an LDAP set up.
+# Create new hashed password: docker run authelia/authelia:latest authelia hash-password <new_password>
+# Ou procure por gerador de argon2id na internet, deve combinar com os parâmetros do arquivo configurations
+# https://docs.authelia.com/configuration/authentication/file.html
+
+# List of users
+# EXAMPLE USER
+#  john:
+#    password: "$argon2id$v=19$m=1048576,p=john_strong_hashed_password"
+#    email: john@example.com
+#    groups:
+#      - admins
+#      - dev
