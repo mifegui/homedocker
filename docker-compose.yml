@@ -41,8 +41,7 @@ services:
       - --providers.file.directory=/rules # Load dynamic configuration from one or more .toml or .yml files in a directory.
 #     - --providers.file.filename=/path/to/file # Load dynamic configuration from a file.
       - --providers.file.watch=true # Only works on top level files in the rules folder
-#     - --certificatesResolvers.dns-duckdns.acme.caServer=https://acme-staging-v02.api.letsencrypt.org/directory # LetsEncrypt Staging Server - uncomment when testing
-        # - --certificatesResolvers.dns-duckdns.acme.email=$CLOUDFLARE_EMAIL # Duckdns n precisa de email.
+        #- --certificatesResolvers.dns-duckdns.acme.caServer=https://acme-staging-v02.api.letsencrypt.org/directory # LetsEncrypt Staging Server - uncomment when testing
       - --certificatesResolvers.dns-duckdns.acme.storage=/acme.json
       - -certificatesResolvers.dns-duckdns.acme.dnsChallenge.provider=duckdns
     networks:
@@ -82,10 +81,10 @@ services:
       - "traefik.http.routers.http-catchall.middlewares=redirect-to-https"
       - "traefik.http.middlewares.redirect-to-https.redirectscheme.scheme=https"
       # HTTP Routers, entrypoints, resolver certificados, informação de domínio. 
-      - "traefik.http.routers.traefik-rtr.entrypoints=https" # Ouviremos apenas em HTTPS
+      - "traefik.http.routers.traefik-rtr.entrypoints=https" 
       - "traefik.http.routers.traefik-rtr.rule=Host(`traefik.$DOMAINNAME`)" # Local do dashboard do traefik
       - "traefik.http.routers.traefik-rtr.tls=true" # Somente por https, nada de http
-#     - "traefik.http.routers.traefik-rtr.tls.certresolver=dns-duckdns" # Comment out this line after first run of traefik to force the use of wildcard certs
+        #- "traefik.http.routers.traefik-rtr.tls.certresolver=dns-duckdns" # Comment out this line after first run of traefik to force the use of wildcard certs
       - "traefik.http.routers.traefik-rtr.tls.domains[0].main=$DOMAINNAME"
       - "traefik.http.routers.traefik-rtr.tls.domains[0].sans=*.$DOMAINNAME"
 #     - "traefik.http.routers.traefik-rtr.tls.domains[1].main=$SECONDDOMAINNAME" # Pulls main cert for second domain
@@ -126,9 +125,9 @@ services:
 # Portainer - WebUI for Containers
   portainer:
     container_name: portainer
-    image: portainer/portainer:latest
+    image: portainer/portainer
     restart: unless-stopped
-    command: -H unix:///var/run/docker.sock --no-auth # Desativa autenticação já que já se usa authelia
+    command: -H unix:///var/run/docker.sock --no-auth
     networks:
       - t2_proxy
     security_opt:
@@ -147,56 +146,43 @@ services:
       - "traefik.http.routers.portainer-rtr.rule=Host(`portainer.$DOMAINNAME`)"
       - "traefik.http.routers.portainer-rtr.tls=true"
         ## Middlewares
-        # - "traefik.http.routers.portainer-rtr.middlewares=chain-no-auth@file" # No Authentication
-        # - "traefik.http.routers.portainer-rtr.middlewares=chain-basic-auth@file" # Basic Authentication
-        # - "traefik.http.routers.portainer-rtr.middlewares=chain-oauth@file" # Google OAuth 2.0
-      - "traefik.http.routers.portainer-rtr.middlewares=chain-authelia@file" # Authelia Authentication
-        ## HTTP Services
-        # - "traefik.http.routers.portainer-rtr.service=portainer-svc"
-        # - "traefik.http.services.portainer-svc.loadbalancer.server.port=9000"
-        
-# FreshRSS - RSS Reader
-  freshrss: 
-    container_name: freshrss # Nome do container
-    image: freshrss/freshrss:arm # Da onde pegamos
-    restart: unless-stopped # Sempre reiniciar se n for pq vc mandou
-    networks:
-      - t2_proxy
-    logging:
-      options:
-        max-size: 10m # tamanho máximo de log
-    volumes:
-      - $USERDIR/docker/freshrss/data:/var/www/FreshRSS/data # Guardar data em ...
-      - $USERDIR/docker/freshrss/extensions:/var/www/FreshRSS/extensions # Guardar extensions em ...
-    environment:
-      - CRON_MIN=*/20   # Checar novos feeds a cada 20 minutos
-      - TZ=$TZ
-    labels:
-      - "traefik.enable=true"
-        ## HTTP Routers
-      - "traefik.http.routers.freshrss-rtr.entrypoints=https"
-      - "traefik.http.routers.freshrss-rtr.rule=Host(`rss.$DOMAINNAME`)"
-      - "traefik.http.routers.freshrss-rtr.tls=true"
-        ## Middlewares
-      - "traefik.http.routers.freshrss-rtr.middlewares=chain-authelia@file" # Authelia Authentication
-
-# Wallabag - Read-it-later app
-  wallabag:
-    container_name: wallabag
-    image: ugeek/wallabag:arm # Wallabag para raspberry
+      - "traefik.http.routers.portainer-rtr.middlewares=chain-authelia@file"
+# Syncthing - Sincronização de arquivos
+  syncthing:
+    container_name: syncthing
+    image: linuxserver/syncthing
     restart: unless-stopped
-    networks:
-      - t2_proxy
-    volumes:
-        #  - $USERDIR/docker/wallabag/images:/var/www/wallabag/web/assets/images
-      - $USERDIR/docker/wallabag/data:/var/www/wallabag/data
     environment:
-      - SYMFONY__ENV__DOMAIN_NAME=https://bag.$DOMAINNAME
+      - PUID=1001
+      - PGID=1001
+      - TZ=$TZ
+      - UMASK_SET=022
+    volumes:
+      - $USERDIR/docker/syncthing/config:/config
+      - /mnt/secundum/:/ext # Se mudar, recriar o container
+    ports:
+      - 8384:8384
+      - 22000:22000
+      - 21027:21027/udp
+    labels:
+      - "traefik.enable=false"
+# Nginx - Servir conteúdo
+  static:
+    container_name: static
+    image: nginx:alpine
+    restart: unless-stopped
+    networks: 
+      - t2_proxy
+    environment:
+      - NGINX_HOST=$DOMAINNAME
+      - NGINX_PORT=80
+    volumes:
+      - $USERDIR/docker/static/content:/usr/share/nginx/html:ro
     labels:
       - "traefik.enable=true"
         ## HTTP Routers
-      - "traefik.http.routers.wallabag-rtr.entrypoints=https"
-      - "traefik.http.routers.wallabag-rtr.rule=Host(`bag.$DOMAINNAME`)"
-      - "traefik.http.routers.wallabag-rtr.tls=true"
+      - "traefik.http.routers.nginx-rtr.entrypoints=https"
+      - "traefik.http.routers.nginx-rtr.rule=Host(`$DOMAINNAME`)"
+      - "traefik.http.routers.nginx-rtr.tls=true"
         ## Middlewares
-      - "traefik.http.routers.wallabag-rtr.middlewares=chain-authelia@file" # Authelia Authentication
+      - "traefik.http.routers.nginx-rtr.middlewares=chain-no-auth@file"
